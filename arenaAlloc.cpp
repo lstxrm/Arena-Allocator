@@ -57,6 +57,17 @@ public:
         return result;
     }
 
+    template<typename T, typename... Args>
+    T* create(Args&&... args){
+        T* ptr = static_cast<T*>(
+            allocate(sizeof(T), alignof(T))
+        );
+        if(ptr == nullptr) return nullptr;
+
+        std::construct_at(ptr, std::forward<Args>(args)...);
+        return ptr;
+    }
+
     void reset() { offset = 0; }
 
     std::size_t used() const { return offset; }
@@ -67,9 +78,8 @@ public:
 int main(){
     Arena arena(1024);
 
-    Player* p = static_cast<Player*> (arena.allocate(sizeof(Player), alignof(Player)));
+    Player* p = arena.create<Player>(100);
     if(p != nullptr){
-        std::construct_at(p, 100);
         std::cout << p->health << '\n';
         std::destroy_at(p);
     }
