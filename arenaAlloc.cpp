@@ -4,6 +4,8 @@
 #include <new>
 #include <memory>
 #include <cassert>
+#include <vector>
+#include <type_traits>
 
 struct Player{
     int health;
@@ -22,6 +24,14 @@ private:
     std::byte* buffer;
     std::size_t capacity;
     std::size_t offset;
+
+    struct Finalizer{
+        void* object;
+        void (*destroy)(void*);
+    };
+
+    std::vector<Finalizer> finalizers;
+
 public:
     explicit Arena(std::size_t capacity)
         : buffer(new std::byte[capacity]),
@@ -29,6 +39,7 @@ public:
           offset(0){}
     
     ~Arena(){
+        run_finalizers();
         delete[] buffer;
     }
 
@@ -65,22 +76,42 @@ public:
         if(ptr == nullptr) return nullptr;
 
         std::construct_at(ptr, std::forward<Args>(args)...);
+
+        if constexpr(!std::is_trivially_destructible_v<T>){
+            finalizers.push_back(Finalizer{ptr, [](void* p){ std::destroy_at(static_cast<T*> (p));
+            }});
+        }
+
         return ptr;
     }
 
-    void reset() { offset = 0; }
+    void reset() {
+        run_finalizers();
+        offset = 0;
+    }
 
     std::size_t used() const { return offset; }
     
     std::size_t remaining_capacity() const { return capacity - offset; }
+
+private:
+    void run_finalizers(){
+        for(auto it = finalizers.rbegin(); it != finalizers.rend(); it++){
+            it->destroy(it->object);
+        }
+        finalizers.clear();
+    }
 };
 
 int main(){
     Arena arena(1024);
 
-    Player* p = arena.create<Player>(100);
-    if(p != nullptr){
-        std::cout << p->health << '\n';
-        std::destroy_at(p);
-    }
+    Player* p1 = arena.create<Player>(100);
+    Player* p2 = arena.create<Player>(50);
+    std::cout << "p1 health: "<< p1->health << '\n';
+    std::cout << "p2 health: " << p2->health << '\n';
+
+    std::cout << "---resetting---" << '\n';
+    arena.reset();
+    std::cout << "offset after reset: " << arena.used() << '\n';
 }
