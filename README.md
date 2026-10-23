@@ -52,6 +52,17 @@ g++ -std=c++20 arenaAlloc.cpp -o arenaAlloc
 ./arenaAlloc
 ```
 
+## Design notes
+
+- Alignment is computed from the buffer's real runtime address, not from
+  `offset` alone — a naive `offset % alignment` approach silently assumes
+  the buffer itself starts at an aligned address, which isn't guaranteed.
+- Destructor tracking uses **type erasure**: a capture-less lambda written
+  inside `create<T>()` (where `T` is known) converts implicitly to a plain
+  `void(*)(void*)` function pointer, letting a single `std::vector` store
+  finalizers for many different types without the `Arena` class itself
+  needing to be templated on every type it might store.
+
 ## Benchmarks
 
 Compared against `std::pmr::monotonic_buffer_resource` (the standard
